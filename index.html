@@ -1,0 +1,2637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive game map display showing current and upcoming game modes with countdown timers">
+    <meta name="author" content="Game Map Display">
+    <title>Game Map Display - Interactive Mode Tracker</title>
+    
+    <!-- Preload critical assets -->
+    <link rel="preload" href="spec/map.png" as="image">
+    
+    <!-- Inline CSS for critical rendering path -->
+    <style>
+        /* Reset and base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+        
+        /* Main map container */
+        .map-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background-image: url('spec/map.png');
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Fallback for missing background image */
+        .map-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #2c1810 0%, #4a3728 50%, #2c1810 100%);
+            z-index: -1;
+        }
+        
+        /* Responsive background adjustments */
+        @media (max-width: 1199px) {
+            .map-container {
+                background-size: contain;
+                background-attachment: scroll;
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .map-container {
+                background-size: cover;
+                background-position: center top;
+            }
+        }
+        
+        /* High DPI display support */
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+            .map-container {
+                background-image: url('spec/map.png');
+            }
+        }
+        
+        /* Map overlay for better contrast */
+        .map-container::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.1);
+            pointer-events: none;
+            z-index: 1;
+        }
+        
+        /* Base map location styling */
+        .map-location {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            transform: translate(-50%, -50%);
+            transition: all 0.3s ease;
+        }
+
+        /* Mode transition animations */
+        .map-location.mode-transitioning {
+            animation: mode-transition-pulse 0.6s ease-in-out;
+        }
+
+        .map-location.mode-transitioning .mode-indicator {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes mode-transition-pulse {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.05); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+
+        /* Smooth transitions for mode indicators */
+        .mode-indicator {
+            transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Position validation indicators */
+        .map-location.position-valid {
+            opacity: 1;
+        }
+
+        .map-location.position-invalid {
+            opacity: 0.5;
+            border: 2px dashed #ff0000;
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        /* Coordinate system helpers (for development) */
+        .coordinate-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .coordinate-grid.visible {
+            opacity: 0.3;
+        }
+
+        .coordinate-grid::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 10% 10%;
+        }
+        
+        /* Responsive map location adjustments */
+        @media (max-width: 1199px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.8);
+            }
+        }
+        
+        @media (max-width: 479px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.7);
+            }
+        }
+
+        /* Position anchoring for different screen orientations */
+        @media (orientation: portrait) and (max-width: 767px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.75);
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 500px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.85);
+            }
+        }
+
+        /* Ultra-wide screen adjustments */
+        @media (min-width: 1920px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(1.1);
+            }
+        }
+
+        /* High resolution displays */
+        @media (min-resolution: 2dppx) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.95);
+            }
+        }
+
+        /* Small height screens (like ultrawide monitors) */
+        @media (max-height: 600px) and (min-width: 1200px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.9);
+            }
+        }
+
+        /* Very small screens */
+        @media (max-width: 320px) {
+            .map-location {
+                transform: translate(-50%, -50%) scale(0.6);
+            }
+        }
+        
+        /* Map labels */
+        .map-label {
+            background: rgba(0, 0, 0, 0.85);
+            color: #ffffff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(4px);
+            white-space: nowrap;
+        }
+        
+        /* Responsive typography */
+        @media (max-width: 1199px) {
+            .map-label {
+                font-size: 12px;
+                padding: 5px 10px;
+                letter-spacing: 0.6px;
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .map-label {
+                font-size: 11px;
+                padding: 4px 8px;
+                letter-spacing: 0.4px;
+            }
+        }
+        
+        @media (max-width: 479px) {
+            .map-label {
+                font-size: 10px;
+                padding: 3px 6px;
+                letter-spacing: 0.2px;
+            }
+        }
+
+        /* Ultra-wide screen typography */
+        @media (min-width: 1920px) {
+            .map-label {
+                font-size: 15px;
+                padding: 8px 16px;
+                letter-spacing: 1px;
+            }
+        }
+
+        /* Very small screens */
+        @media (max-width: 320px) {
+            .map-label {
+                font-size: 9px;
+                padding: 2px 4px;
+                letter-spacing: 0.1px;
+            }
+        }
+
+        /* High DPI adjustments */
+        @media (min-resolution: 2dppx) {
+            .map-label {
+                border-width: 0.5px;
+            }
+        }
+        
+        /* Mode indicator container */
+        .mode-indicators {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        /* Base mode indicator styling */
+        .mode-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            border: 1px solid transparent;
+            min-width: 140px;
+            justify-content: center;
+            backdrop-filter: blur(4px);
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            position: relative;
+        }
+
+        /* Mode-specific styling using CSS custom properties */
+        .mode-indicator {
+            color: var(--mode-color, inherit);
+            background-color: var(--mode-bg-color, transparent);
+        }
+
+        /* Mode-specific classes for additional styling */
+        .mode-normal {
+            --mode-accent: #ffffff;
+        }
+
+        .mode-night-raid {
+            --mode-accent: #4169e1;
+        }
+
+        .mode-cold-snap {
+            --mode-accent: #87ceeb;
+        }
+
+        .mode-electromagnetic-storm {
+            --mode-accent: #ffd700;
+        }
+
+        .mode-hidden-bunker {
+            --mode-accent: #8b4513;
+        }
+        
+        /* Responsive mode indicators */
+        @media (max-width: 1199px) {
+            .mode-indicator {
+                font-size: 11px;
+                padding: 7px 10px;
+                min-width: 120px;
+                gap: 5px;
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .mode-indicator {
+                font-size: 10px;
+                padding: 6px 8px;
+                min-width: 100px;
+                gap: 4px;
+                letter-spacing: 0.2px;
+            }
+        }
+        
+        @media (max-width: 479px) {
+            .mode-indicator {
+                font-size: 9px;
+                padding: 5px 6px;
+                min-width: 80px;
+                gap: 3px;
+                letter-spacing: 0.1px;
+            }
+        }
+
+        /* Ultra-wide screen mode indicators */
+        @media (min-width: 1920px) {
+            .mode-indicator {
+                font-size: 14px;
+                padding: 10px 16px;
+                min-width: 160px;
+                gap: 8px;
+                letter-spacing: 0.6px;
+            }
+        }
+
+        /* Very small screens */
+        @media (max-width: 320px) {
+            .mode-indicator {
+                font-size: 8px;
+                padding: 4px 5px;
+                min-width: 70px;
+                gap: 2px;
+                letter-spacing: 0px;
+            }
+        }
+
+        /* Landscape mobile adjustments */
+        @media (orientation: landscape) and (max-height: 500px) {
+            .mode-indicator {
+                font-size: 10px;
+                padding: 5px 8px;
+                min-width: 90px;
+            }
+        }
+
+        /* Portrait tablet adjustments */
+        @media (orientation: portrait) and (min-width: 768px) and (max-width: 1024px) {
+            .mode-indicator {
+                font-size: 12px;
+                padding: 8px 12px;
+                min-width: 130px;
+            }
+        }
+        
+        /* Active mode styling - bright and prominent */
+        .active-mode {
+            background: rgba(255, 215, 0, 0.9);
+            color: #000000;
+            border-color: #ffd700;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        
+        /* Next mode styling - dimmed and subdued */
+        .next-mode {
+            background: rgba(100, 100, 100, 0.6);
+            color: #cccccc;
+            border-color: rgba(255, 255, 255, 0.2);
+            opacity: 0.7;
+        }
+        
+        /* Timer display */
+        .timer-display {
+            background: rgba(0, 0, 0, 0.9);
+            color: #ffd700;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            margin-left: 8px;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            box-shadow: 0 0 4px rgba(255, 215, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        /* Timer warning states */
+        .timer-warning {
+            color: #ff8c00 !important;
+            border-color: rgba(255, 140, 0, 0.5) !important;
+            box-shadow: 0 0 6px rgba(255, 140, 0, 0.3) !important;
+            animation: pulse-warning 2s infinite;
+        }
+
+        .timer-critical {
+            color: #ff4500 !important;
+            border-color: rgba(255, 69, 0, 0.7) !important;
+            box-shadow: 0 0 8px rgba(255, 69, 0, 0.5) !important;
+            animation: pulse-critical 1s infinite;
+        }
+
+        @keyframes pulse-warning {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        @keyframes pulse-critical {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+
+        /* Enhanced visual effects */
+        .active-mode {
+            background: rgba(255, 215, 0, 0.9);
+            color: #000000;
+            border-color: #ffd700;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Active mode glow effect */
+        .active-mode::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: linear-gradient(45deg, #ffd700, #ffed4e, #ffd700);
+            border-radius: inherit;
+            z-index: -1;
+            opacity: 0.3;
+            animation: glow-pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes glow-pulse {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.6; }
+        }
+
+        /* Next mode subtle animation */
+        .next-mode {
+            background: rgba(100, 100, 100, 0.6);
+            color: #cccccc;
+            border-color: rgba(255, 255, 255, 0.2);
+            opacity: 0.7;
+            position: relative;
+        }
+
+        .next-mode::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            animation: shimmer 4s ease-in-out infinite;
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        /* Map label enhancements */
+        .map-label {
+            background: rgba(0, 0, 0, 0.85);
+            color: #ffffff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(4px);
+            white-space: nowrap;
+            position: relative;
+        }
+
+        .map-label::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent);
+            border-radius: inherit;
+            pointer-events: none;
+        }
+
+        /* Loading enhancements */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            z-index: 1000;
+            text-align: center;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+        
+        .loading::after {
+            content: '';
+            display: block;
+            width: 20px;
+            height: 20px;
+            margin: 10px auto 0;
+            border: 2px solid #ffffff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Focus indicators for accessibility */
+        .map-location:focus-within {
+            outline: 2px solid #ffd700;
+            outline-offset: 4px;
+            border-radius: 8px;
+        }
+
+        /* Screen reader only content */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* Skip link for accessibility */
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 6px;
+            background: #000000;
+            color: #ffffff;
+            padding: 8px;
+            text-decoration: none;
+            border-radius: 4px;
+            z-index: 1001;
+        }
+
+        .skip-link:focus {
+            top: 6px;
+        }
+
+        /* Enhanced visual feedback classes */
+        .timer-updated {
+            animation: timer-update-flash 0.2s ease-out;
+        }
+
+        @keyframes timer-update-flash {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .timer-warning-flash {
+            animation: warning-flash 1s ease-out;
+        }
+
+        @keyframes warning-flash {
+            0%, 100% { box-shadow: 0 0 0 rgba(255, 140, 0, 0); }
+            50% { box-shadow: 0 0 20px rgba(255, 140, 0, 0.8); }
+        }
+
+        .timer-critical-flash {
+            animation: critical-flash 1s ease-out;
+        }
+
+        @keyframes critical-flash {
+            0%, 100% { box-shadow: 0 0 0 rgba(255, 69, 0, 0); }
+            50% { box-shadow: 0 0 25px rgba(255, 69, 0, 0.9); }
+        }
+
+        .timer-expired-flash {
+            animation: expired-flash 2s ease-out;
+        }
+
+        @keyframes expired-flash {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 215, 0, 0); }
+            25% { transform: scale(1.05); box-shadow: 0 0 30px rgba(255, 215, 0, 0.8); }
+            75% { transform: scale(1.02); box-shadow: 0 0 20px rgba(255, 215, 0, 0.6); }
+        }
+
+        .mode-urgent {
+            animation: urgent-pulse 0.8s ease-in-out infinite;
+        }
+
+        @keyframes urgent-pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.03); opacity: 0.9; }
+        }
+
+        .updating {
+            transition: all 0.3s ease;
+            opacity: 0.8;
+        }
+
+        /* Map location timer state classes */
+        .map-location.timer-normal {
+            /* Normal state - no additional styling */
+        }
+
+        .map-location.timer-warning {
+            filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.3));
+        }
+
+        .map-location.timer-critical {
+            filter: drop-shadow(0 0 12px rgba(255, 69, 0, 0.5));
+            animation: critical-location-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes critical-location-pulse {
+            0%, 100% { filter: drop-shadow(0 0 12px rgba(255, 69, 0, 0.5)); }
+            50% { filter: drop-shadow(0 0 18px rgba(255, 69, 0, 0.8)); }
+        }
+        
+        /* Responsive timer display */
+        @media (max-width: 1199px) {
+            .timer-display {
+                font-size: 10px;
+                padding: 2px 6px;
+                margin-left: 6px;
+            }
+        }
+        
+        @media (max-width: 767px) {
+            .timer-display {
+                font-size: 9px;
+                padding: 2px 5px;
+                margin-left: 5px;
+            }
+        }
+        
+        @media (max-width: 479px) {
+            .timer-display {
+                font-size: 8px;
+                padding: 1px 4px;
+                margin-left: 4px;
+            }
+        }
+
+        /* Ultra-wide screen timer display */
+        @media (min-width: 1920px) {
+            .timer-display {
+                font-size: 13px;
+                padding: 4px 10px;
+                margin-left: 10px;
+            }
+        }
+
+        /* Very small screens */
+        @media (max-width: 320px) {
+            .timer-display {
+                font-size: 7px;
+                padding: 1px 3px;
+                margin-left: 3px;
+            }
+        }
+
+        /* High DPI timer adjustments */
+        @media (min-resolution: 2dppx) {
+            .timer-display {
+                border-width: 0.5px;
+            }
+        }
+        
+        /* Mode icons */
+        .mode-icon {
+            font-size: 14px;
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        /* Icon hover effects */
+        .mode-indicator:hover .mode-icon {
+            transform: scale(1.1);
+        }
+
+        /* Accessibility improvements */
+        .mode-indicator:focus-visible {
+            outline: 2px solid #ffd700;
+            outline-offset: 2px;
+        }
+
+        /* High contrast mode support */
+        @media (prefers-contrast: high) {
+            .active-mode {
+                background: #000000 !important;
+                color: #ffffff !important;
+                border: 2px solid #ffffff !important;
+            }
+            
+            .next-mode {
+                background: #333333 !important;
+                color: #ffffff !important;
+                border: 2px solid #cccccc !important;
+            }
+            
+            .timer-display {
+                background: #000000 !important;
+                color: #ffffff !important;
+                border: 2px solid #ffffff !important;
+            }
+        }
+
+        /* Reduced motion support */
+        @media (prefers-reduced-motion: reduce) {
+            .mode-indicator,
+            .timer-display,
+            .map-label,
+            .map-location {
+                transition: none !important;
+                animation: none !important;
+            }
+            
+            .timer-warning,
+            .timer-critical {
+                animation: none !important;
+            }
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            .map-label {
+                background: rgba(0, 0, 0, 0.95);
+                border-color: rgba(255, 255, 255, 0.5);
+            }
+            
+            .next-mode {
+                background: rgba(80, 80, 80, 0.8);
+                color: #e0e0e0;
+            }
+        }
+
+        /* Light mode adjustments */
+        @media (prefers-color-scheme: light) {
+            .map-container::after {
+                background: rgba(0, 0, 0, 0.2);
+            }
+            
+            .active-mode {
+                box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+            }
+        }
+        
+        /* Loading state */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            z-index: 1000;
+            text-align: center;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+        
+        .loading::after {
+            content: '';
+            display: block;
+            width: 20px;
+            height: 20px;
+            margin: 10px auto 0;
+            border: 2px solid #ffffff;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Performance optimizations */
+        .map-container,
+        .map-location,
+        .mode-indicator {
+            will-change: transform;
+        }
+        
+        /* Smooth transitions */
+        .mode-indicator,
+        .timer-display,
+        .map-label {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* Error fallback */
+        .error-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 0, 0, 0.9);
+            color: #ffffff;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading indicator -->
+    <div id="loading" class="loading" role="status" aria-live="polite">
+        <span class="sr-only">Loading Game Map Display...</span>
+        Loading Game Map Display...
+    </div>
+    
+    <!-- Skip link for accessibility -->
+    <a href="#mapContainer" class="skip-link">Skip to main content</a>
+    
+    <!-- Main map container -->
+    <main class="map-container" id="mapContainer" role="main" aria-label="Interactive game map display">
+        <!-- Coordinate grid for development (hidden by default) -->
+        <div class="coordinate-grid" id="coordinateGrid" aria-hidden="true"></div>
+        
+        <!-- Screen reader announcement area -->
+        <div id="announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+        
+        <!-- Map locations will be dynamically populated by JavaScript -->
+        
+        <!-- Buried City -->
+        <div class="map-location position-valid" id="buried-city" style="left: 15%; top: 45%;">
+            <div class="map-label">Buried City</div>
+            <div class="mode-indicators">
+                <div class="mode-indicator active-mode" id="buried-city-active">
+                    <span class="mode-icon">⚪</span>
+                    <span>Normal</span>
+                </div>
+                <div class="mode-indicator next-mode" id="buried-city-next">
+                    <span class="mode-icon">❄️</span>
+                    <span>Cold Snap</span>
+                    <span class="timer-display" id="buried-city-timer">29:09</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Dam Battlegrounds -->
+        <div class="map-location position-valid" id="dam-battlegrounds" style="left: 50%; top: 65%;">
+            <div class="map-label">Dam Battlegrounds</div>
+            <div class="mode-indicators">
+                <div class="mode-indicator active-mode" id="dam-battlegrounds-active">
+                    <span class="mode-icon">❄️</span>
+                    <span>Cold Snap</span>
+                </div>
+                <div class="mode-indicator next-mode" id="dam-battlegrounds-next">
+                    <span class="mode-icon">⚪</span>
+                    <span>Normal</span>
+                    <span class="timer-display" id="dam-battlegrounds-timer">29:09</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Space Port -->
+        <div class="map-location position-valid" id="space-port" style="left: 25%; top: 25%;">
+            <div class="map-label">Space Port</div>
+            <div class="mode-indicators">
+                <div class="mode-indicator active-mode" id="space-port-active">
+                    <span class="mode-icon">🌙</span>
+                    <span>Night Raid</span>
+                </div>
+                <div class="mode-indicator next-mode" id="space-port-next">
+                    <span class="mode-icon">⚪</span>
+                    <span>Normal</span>
+                    <span class="timer-display" id="space-port-timer">29:09</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- The Blue Gate -->
+        <div class="map-location position-valid" id="the-blue-gate" style="left: 75%; top: 45%;">
+            <div class="map-label">The Blue Gate</div>
+            <div class="mode-indicators">
+                <div class="mode-indicator active-mode" id="the-blue-gate-active">
+                    <span class="mode-icon">⚪</span>
+                    <span>Normal</span>
+                </div>
+                <div class="mode-indicator next-mode" id="the-blue-gate-next">
+                    <span class="mode-icon">⚡</span>
+                    <span>Electromagnetic Storm</span>
+                    <span class="timer-display" id="the-blue-gate-timer">29:09</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Stella Montis -->
+        <div class="map-location position-valid" id="stella-montis" style="left: 85%; top: 15%;">
+            <div class="map-label">Stella Montis</div>
+            <div class="mode-indicators">
+                <div class="mode-indicator active-mode" id="stella-montis-active">
+                    <span class="mode-icon">⚪</span>
+                    <span>Normal</span>
+                </div>
+                <div class="mode-indicator next-mode" id="stella-montis-next">
+                    <span class="mode-icon">🌙</span>
+                    <span>Night Raid</span>
+                    <span class="timer-display" id="stella-montis-timer">29:09</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Practice Range -->
+        <div class="map-location position-valid" id="practice-range" style="left: 50%; top: 35%;">
+            <div class="map-label">Practice Range</div>
+            <div class="mode-indicators">
+                <div class="mode-indicator active-mode" id="practice-range-active">
+                    <span class="mode-icon">⚪</span>
+                    <span>Normal</span>
+                </div>
+                <!-- Practice Range has no next mode or timer -->
+            </div>
+        </div>
+    </main>
+    
+    <!-- Error message container -->
+    <div id="errorMessage" class="error-message" style="display: none;"></div>
+    
+    <!-- JavaScript will be added in subsequent tasks -->
+    <script>
+        // Map configuration data from design document
+        const mapConfigurations = {
+            "buried-city": {
+                id: "buried-city",
+                name: "Buried City",
+                displayName: "Buried City",
+                position: { x: 15, y: 45 },
+                currentMode: "normal",
+                nextMode: "cold-snap",
+                timeRemaining: 1749, // 29:09 in seconds
+                cycleDuration: 1800, // 30 minutes in seconds
+                lastUpdate: Date.now(),
+                hasTimer: true
+            },
+            "dam-battlegrounds": {
+                id: "dam-battlegrounds",
+                name: "Dam Battlegrounds",
+                displayName: "Dam Battlegrounds", 
+                position: { x: 50, y: 65 },
+                currentMode: "cold-snap",
+                nextMode: "normal",
+                timeRemaining: 1749, // 29:09 in seconds
+                cycleDuration: 1800, // 30 minutes in seconds
+                lastUpdate: Date.now(),
+                hasTimer: true
+            },
+            "space-port": {
+                id: "space-port",
+                name: "Space Port",
+                displayName: "Space Port",
+                position: { x: 25, y: 25 },
+                currentMode: "night-raid",
+                nextMode: "normal",
+                timeRemaining: 1749, // 29:09 in seconds
+                cycleDuration: 1800, // 30 minutes in seconds
+                lastUpdate: Date.now(),
+                hasTimer: true
+            },
+            "the-blue-gate": {
+                id: "the-blue-gate",
+                name: "The Blue Gate",
+                displayName: "The Blue Gate",
+                position: { x: 75, y: 45 },
+                currentMode: "normal",
+                nextMode: "electromagnetic-storm",
+                timeRemaining: 1749, // 29:09 in seconds
+                cycleDuration: 1800, // 30 minutes in seconds
+                lastUpdate: Date.now(),
+                hasTimer: true
+            },
+            "stella-montis": {
+                id: "stella-montis",
+                name: "Stella Montis",
+                displayName: "Stella Montis",
+                position: { x: 85, y: 15 },
+                currentMode: "normal", 
+                nextMode: "night-raid",
+                timeRemaining: 1749, // 29:09 in seconds
+                cycleDuration: 1800, // 30 minutes in seconds
+                lastUpdate: Date.now(),
+                hasTimer: true
+            },
+            "practice-range": {
+                id: "practice-range",
+                name: "Practice Range",
+                displayName: "Practice Range",
+                position: { x: 50, y: 35 },
+                currentMode: "normal",
+                nextMode: "normal",
+                timeRemaining: null, // No timer for practice
+                cycleDuration: null,
+                lastUpdate: Date.now(),
+                hasTimer: false
+            }
+        };
+
+        // Game mode definitions with enhanced properties
+        const gameModes = {
+            "normal": {
+                id: "normal",
+                name: "normal",
+                displayName: "Normal",
+                shortName: "Normal",
+                icon: "⚪",
+                iconAlt: "Normal Mode",
+                description: "Standard gameplay mode",
+                color: "#ffffff",
+                backgroundColor: "rgba(255, 255, 255, 0.2)"
+            },
+            "night-raid": {
+                id: "night-raid",
+                name: "night-raid",
+                displayName: "Night Raid",
+                shortName: "Night Raid", 
+                icon: "🌙",
+                iconAlt: "Night Raid Mode",
+                description: "Nighttime combat scenario",
+                color: "#4169e1",
+                backgroundColor: "rgba(65, 105, 225, 0.2)"
+            },
+            "cold-snap": {
+                id: "cold-snap",
+                name: "cold-snap",
+                displayName: "Cold Snap",
+                shortName: "Cold Snap",
+                icon: "❄️",
+                iconAlt: "Cold Snap Mode", 
+                description: "Frozen environment conditions",
+                color: "#87ceeb",
+                backgroundColor: "rgba(135, 206, 235, 0.2)"
+            },
+            "electromagnetic-storm": {
+                id: "electromagnetic-storm",
+                name: "electromagnetic-storm",
+                displayName: "Electromagnetic Storm",
+                shortName: "EM Storm",
+                icon: "⚡",
+                iconAlt: "Electromagnetic Storm Mode",
+                description: "Electrical interference effects",
+                color: "#ffd700",
+                backgroundColor: "rgba(255, 215, 0, 0.2)"
+            },
+            "hidden-bunker": {
+                id: "hidden-bunker",
+                name: "hidden-bunker",
+                displayName: "Hidden Bunker",
+                shortName: "Bunker",
+                icon: "🏠",
+                iconAlt: "Hidden Bunker Mode",
+                description: "Underground facility mode",
+                color: "#8b4513",
+                backgroundColor: "rgba(139, 69, 19, 0.2)"
+            }
+        };
+
+        // Map state management
+        const mapState = {
+            initialized: false,
+            timersActive: false,
+            lastGlobalUpdate: Date.now(),
+            updateInterval: null,
+            errorCount: 0,
+            maxErrors: 5
+        };
+
+        // Utility functions for data validation
+        function validateMapConfiguration(mapId, config) {
+            const requiredFields = ['id', 'name', 'displayName', 'position', 'currentMode', 'nextMode'];
+            const errors = [];
+
+            requiredFields.forEach(field => {
+                if (!config.hasOwnProperty(field)) {
+                    errors.push(`Missing required field: ${field}`);
+                }
+            });
+
+            // Validate position
+            if (config.position) {
+                if (typeof config.position.x !== 'number' || typeof config.position.y !== 'number') {
+                    errors.push('Position coordinates must be numbers');
+                }
+                if (config.position.x < 0 || config.position.x > 100 || 
+                    config.position.y < 0 || config.position.y > 100) {
+                    errors.push('Position coordinates must be between 0 and 100');
+                }
+            }
+
+            // Validate modes exist
+            if (config.currentMode && !gameModes[config.currentMode]) {
+                errors.push(`Invalid current mode: ${config.currentMode}`);
+            }
+            if (config.nextMode && !gameModes[config.nextMode]) {
+                errors.push(`Invalid next mode: ${config.nextMode}`);
+            }
+
+            // Validate timer data
+            if (config.hasTimer && config.timeRemaining !== null) {
+                if (typeof config.timeRemaining !== 'number' || config.timeRemaining < 0) {
+                    errors.push('Timer remaining must be a non-negative number');
+                }
+            }
+
+            if (errors.length > 0) {
+                console.error(`Validation errors for map ${mapId}:`, errors);
+                return false;
+            }
+
+            return true;
+        }
+
+        function validateGameMode(modeId, mode) {
+            const requiredFields = ['id', 'name', 'displayName', 'icon', 'description'];
+            const errors = [];
+
+            requiredFields.forEach(field => {
+                if (!mode.hasOwnProperty(field)) {
+                    errors.push(`Missing required field: ${field}`);
+                }
+            });
+
+            if (errors.length > 0) {
+                console.error(`Validation errors for mode ${modeId}:`, errors);
+                return false;
+            }
+
+            return true;
+        }
+
+        // Initialize and validate all data models
+        function initializeDataModels() {
+            let validMaps = 0;
+            let validModes = 0;
+
+            // Validate map configurations
+            Object.keys(mapConfigurations).forEach(mapId => {
+                if (validateMapConfiguration(mapId, mapConfigurations[mapId])) {
+                    validMaps++;
+                } else {
+                    showError(`Invalid configuration for map: ${mapId}`);
+                }
+            });
+
+            // Validate game modes
+            Object.keys(gameModes).forEach(modeId => {
+                if (validateGameMode(modeId, gameModes[modeId])) {
+                    validModes++;
+                } else {
+                    showError(`Invalid configuration for mode: ${modeId}`);
+                }
+            });
+
+            console.log(`Data models initialized: ${validMaps} maps, ${validModes} modes`);
+            mapState.initialized = true;
+
+            return { validMaps, validModes };
+        }
+
+        // Mode indicator rendering system
+        function renderModeIndicator(mapId, modeType, modeId, includeTimer = false) {
+            const mode = gameModes[modeId];
+            if (!mode) {
+                console.error(`Invalid mode ID: ${modeId}`);
+                return null;
+            }
+
+            const config = mapConfigurations[mapId];
+            if (!config) {
+                console.error(`Invalid map ID: ${mapId}`);
+                return null;
+            }
+
+            // Create mode indicator element
+            const indicator = document.createElement('div');
+            indicator.className = `mode-indicator ${modeType}`;
+            indicator.id = `${mapId}-${modeType.replace('-', '')}`;
+            
+            // Add accessibility attributes
+            indicator.setAttribute('role', 'status');
+            indicator.setAttribute('aria-label', `${mode.displayName} mode for ${config.displayName}`);
+
+            // Create mode icon
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'mode-icon';
+            iconSpan.textContent = mode.icon;
+            iconSpan.setAttribute('aria-label', mode.iconAlt || mode.displayName);
+            iconSpan.setAttribute('title', mode.description);
+
+            // Create mode text
+            const textSpan = document.createElement('span');
+            textSpan.className = 'mode-text';
+            textSpan.textContent = mode.shortName || mode.displayName;
+
+            // Append elements
+            indicator.appendChild(iconSpan);
+            indicator.appendChild(textSpan);
+
+            // Add timer if requested and map has timer
+            if (includeTimer && config.hasTimer && config.timeRemaining !== null) {
+                const timerSpan = document.createElement('span');
+                timerSpan.className = 'timer-display';
+                timerSpan.id = `${mapId}-timer`;
+                timerSpan.textContent = formatTime(config.timeRemaining);
+                timerSpan.setAttribute('aria-label', `Time remaining: ${formatTime(config.timeRemaining)}`);
+                indicator.appendChild(timerSpan);
+            }
+
+            return indicator;
+        }
+
+        function updateModeIndicators() {
+            Object.keys(mapConfigurations).forEach(mapId => {
+                const config = mapConfigurations[mapId];
+                const mapElement = document.getElementById(mapId);
+                
+                if (!mapElement || !config) return;
+
+                const indicatorsContainer = mapElement.querySelector('.mode-indicators');
+                if (!indicatorsContainer) return;
+
+                // Clear existing indicators
+                indicatorsContainer.innerHTML = '';
+
+                // Render active mode
+                const activeIndicator = renderModeIndicator(mapId, 'active-mode', config.currentMode, false);
+                if (activeIndicator) {
+                    indicatorsContainer.appendChild(activeIndicator);
+                }
+
+                // Render next mode (if different from current and map has timer)
+                if (config.hasTimer && config.nextMode !== config.currentMode) {
+                    const nextIndicator = renderModeIndicator(mapId, 'next-mode', config.nextMode, true);
+                    if (nextIndicator) {
+                        indicatorsContainer.appendChild(nextIndicator);
+                    }
+                }
+            });
+        }
+
+        function updateSingleModeIndicator(mapId, modeType, modeId) {
+            const indicator = document.getElementById(`${mapId}-${modeType.replace('-', '')}`);
+            const mode = gameModes[modeId];
+            
+            if (!indicator || !mode) return;
+
+            // Update icon
+            const iconElement = indicator.querySelector('.mode-icon');
+            if (iconElement) {
+                iconElement.textContent = mode.icon;
+                iconElement.setAttribute('aria-label', mode.iconAlt || mode.displayName);
+                iconElement.setAttribute('title', mode.description);
+            }
+
+            // Update text
+            const textElement = indicator.querySelector('.mode-text');
+            if (textElement) {
+                textElement.textContent = mode.shortName || mode.displayName;
+            }
+
+            // Update accessibility
+            indicator.setAttribute('aria-label', `${mode.displayName} mode for ${mapConfigurations[mapId].displayName}`);
+        }
+
+        function applyModeStyles(mapId, modeType, modeId) {
+            const indicator = document.getElementById(`${mapId}-${modeType.replace('-', '')}`);
+            const mode = gameModes[modeId];
+            
+            if (!indicator || !mode) return;
+
+            // Apply mode-specific styling if available
+            if (mode.color) {
+                indicator.style.setProperty('--mode-color', mode.color);
+            }
+            if (mode.backgroundColor) {
+                indicator.style.setProperty('--mode-bg-color', mode.backgroundColor);
+            }
+
+            // Add mode-specific CSS class
+            indicator.classList.add(`mode-${modeId}`);
+        }
+
+        // Format time in MM:SS format
+        function formatTime(seconds) {
+            if (seconds === null || seconds === undefined || seconds < 0) {
+                return '--:--';
+            }
+
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            
+            return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        // Validate time format
+        function validateTimeFormat(timeString) {
+            const timeRegex = /^([0-5]?[0-9]):([0-5][0-9])$/;
+            return timeRegex.test(timeString);
+        }
+
+        // Parse time string to seconds
+        function parseTimeToSeconds(timeString) {
+            if (!validateTimeFormat(timeString)) {
+                return null;
+            }
+
+            const [minutes, seconds] = timeString.split(':').map(Number);
+            return (minutes * 60) + seconds;
+        }
+
+        // Initialize mode indicators with current configuration
+        function initializeModeIndicators() {
+            try {
+                updateModeIndicators();
+                
+                // Apply initial styling
+                Object.keys(mapConfigurations).forEach(mapId => {
+                    const config = mapConfigurations[mapId];
+                    applyModeStyles(mapId, 'active-mode', config.currentMode);
+                    
+                    if (config.hasTimer && config.nextMode !== config.currentMode) {
+                        applyModeStyles(mapId, 'next-mode', config.nextMode);
+                    }
+                });
+
+                console.log('Mode indicators initialized successfully');
+                return true;
+            } catch (error) {
+                console.error('Error initializing mode indicators:', error);
+                showError('Failed to initialize mode indicators');
+                return false;
+            }
+        }
+
+        // Timer Management Engine
+        function initializeTimers() {
+            try {
+                // Set up initial timer states for all maps
+                Object.keys(mapConfigurations).forEach(mapId => {
+                    const config = mapConfigurations[mapId];
+                    
+                    if (config.hasTimer && config.timeRemaining !== null) {
+                        // Validate timer value
+                        if (config.timeRemaining < 0) {
+                            console.warn(`Invalid timer value for ${mapId}, resetting to 0`);
+                            config.timeRemaining = 0;
+                        }
+                        
+                        // Update last update timestamp
+                        config.lastUpdate = Date.now();
+                        
+                        // Update timer display
+                        updateTimerDisplay(mapId);
+                    }
+                });
+
+                mapState.timersActive = true;
+                console.log('Timers initialized successfully');
+                return true;
+            } catch (error) {
+                console.error('Error initializing timers:', error);
+                showError('Failed to initialize timers');
+                return false;
+            }
+        }
+
+        function updateTimer(mapId) {
+            const config = mapConfigurations[mapId];
+            if (!config || !config.hasTimer || config.timeRemaining === null) {
+                return false;
+            }
+
+            const now = Date.now();
+            const deltaTime = Math.floor((now - config.lastUpdate) / 1000); // Convert to seconds
+            
+            if (deltaTime >= 1) {
+                // Decrement timer
+                config.timeRemaining = Math.max(0, config.timeRemaining - deltaTime);
+                config.lastUpdate = now;
+                
+                // Update display
+                updateTimerDisplay(mapId);
+                
+                // Check if timer reached zero
+                if (config.timeRemaining === 0) {
+                    handleTimerExpiration(mapId);
+                    return true; // Timer expired
+                }
+            }
+            
+            return false; // Timer still running
+        }
+
+        function updateTimerDisplay(mapId) {
+            const config = mapConfigurations[mapId];
+            const timerElement = document.getElementById(`${mapId}-timer`);
+            
+            if (!timerElement || !config || !config.hasTimer) {
+                return;
+            }
+
+            const formattedTime = formatTime(config.timeRemaining);
+            const previousTime = timerElement.textContent;
+            
+            // Only update if time has changed
+            if (formattedTime !== previousTime) {
+                timerElement.textContent = formattedTime;
+                timerElement.setAttribute('aria-label', `Time remaining: ${formattedTime}`);
+                
+                // Add visual feedback for state changes
+                const wasWarning = timerElement.classList.contains('timer-warning');
+                const wasCritical = timerElement.classList.contains('timer-critical');
+                
+                // Update warning states
+                if (config.timeRemaining <= 60 && config.timeRemaining > 10) {
+                    if (!wasWarning) {
+                        timerElement.classList.add('timer-warning');
+                        addTimerEventFeedback(mapId, 'warning');
+                        announceToScreenReader(`${mapConfigurations[mapId].displayName} timer warning: ${formattedTime} remaining`);
+                    }
+                } else {
+                    timerElement.classList.remove('timer-warning');
+                }
+                
+                if (config.timeRemaining <= 10 && config.timeRemaining > 0) {
+                    if (!wasCritical) {
+                        timerElement.classList.add('timer-critical');
+                        addTimerEventFeedback(mapId, 'critical');
+                        announceToScreenReader(`${mapConfigurations[mapId].displayName} timer critical: ${formattedTime} remaining`);
+                    }
+                } else {
+                    timerElement.classList.remove('timer-critical');
+                }
+                
+                // Add update animation
+                timerElement.classList.add('timer-updated');
+                setTimeout(() => {
+                    timerElement.classList.remove('timer-updated');
+                }, 200);
+            }
+        }
+
+        function handleTimerExpiration(mapId) {
+            const config = mapConfigurations[mapId];
+            if (!config) return;
+
+            console.log(`Timer expired for ${mapId}, transitioning modes`);
+            
+            // Add visual feedback for expiration
+            addTimerEventFeedback(mapId, 'expired');
+            
+            // Announce expiration to screen readers
+            announceToScreenReader(`${config.displayName} mode is changing now`);
+            
+            // Transition to next mode
+            transitionMode(mapId);
+            
+            // Reset timer for next cycle
+            config.timeRemaining = config.cycleDuration || 1800; // Default 30 minutes
+            config.lastUpdate = Date.now();
+            
+            // Update displays with smooth transitions
+            setTimeout(() => {
+                updateModeIndicators();
+                updateTimerDisplay(mapId);
+                updateAllVisualElements();
+            }, 500); // Delay to allow transition animation
+        }
+
+        function transitionMode(mapId) {
+            const config = mapConfigurations[mapId];
+            if (!config) return;
+
+            const previousMode = config.currentMode;
+            const newMode = config.nextMode;
+            
+            // Validate transition
+            if (!gameModes[newMode]) {
+                console.error(`Invalid next mode for ${mapId}: ${newMode}`);
+                return;
+            }
+
+            console.log(`Starting mode transition for ${mapId}: ${previousMode} -> ${newMode}`);
+            
+            // Add transition animation class
+            const mapElement = document.getElementById(mapId);
+            if (mapElement) {
+                mapElement.classList.add('mode-transitioning');
+            }
+
+            // Update current mode
+            config.currentMode = newMode;
+            
+            // Determine next mode using enhanced logic
+            config.nextMode = determineNextMode(mapId, newMode);
+            
+            // Perform visual transition with delay for smooth animation
+            setTimeout(() => {
+                updateModeIndicatorsWithTransition(mapId);
+                
+                // Remove transition class after animation
+                setTimeout(() => {
+                    if (mapElement) {
+                        mapElement.classList.remove('mode-transitioning');
+                    }
+                }, 300);
+            }, 100);
+            
+            // Log transition completion
+            console.log(`Mode transition completed for ${mapId}: ${previousMode} -> ${newMode}, next: ${config.nextMode}`);
+            
+            // Trigger transition event for potential listeners
+            triggerModeTransitionEvent(mapId, previousMode, newMode);
+        }
+
+        function determineNextMode(mapId, currentMode) {
+            const config = mapConfigurations[mapId];
+            
+            // Custom transition logic for specific maps
+            const transitionRules = {
+                'buried-city': {
+                    'normal': 'cold-snap',
+                    'cold-snap': 'hidden-bunker',
+                    'hidden-bunker': 'normal'
+                },
+                'dam-battlegrounds': {
+                    'normal': 'cold-snap',
+                    'cold-snap': 'electromagnetic-storm',
+                    'electromagnetic-storm': 'normal'
+                },
+                'space-port': {
+                    'normal': 'night-raid',
+                    'night-raid': 'electromagnetic-storm',
+                    'electromagnetic-storm': 'normal'
+                },
+                'the-blue-gate': {
+                    'normal': 'electromagnetic-storm',
+                    'electromagnetic-storm': 'hidden-bunker',
+                    'hidden-bunker': 'normal'
+                },
+                'stella-montis': {
+                    'normal': 'night-raid',
+                    'night-raid': 'cold-snap',
+                    'cold-snap': 'normal'
+                },
+                'practice-range': {
+                    'normal': 'normal' // Practice range always stays normal
+                }
+            };
+
+            const mapRules = transitionRules[mapId];
+            if (mapRules && mapRules[currentMode]) {
+                return mapRules[currentMode];
+            }
+
+            // Fallback to simple rotation
+            const modeKeys = Object.keys(gameModes);
+            const currentIndex = modeKeys.indexOf(currentMode);
+            const nextIndex = (currentIndex + 1) % modeKeys.length;
+            return modeKeys[nextIndex];
+        }
+
+        function updateModeIndicatorsWithTransition(mapId) {
+            const config = mapConfigurations[mapId];
+            const mapElement = document.getElementById(mapId);
+            
+            if (!mapElement || !config) return;
+
+            const indicatorsContainer = mapElement.querySelector('.mode-indicators');
+            if (!indicatorsContainer) return;
+
+            // Add fade-out effect to existing indicators
+            const existingIndicators = indicatorsContainer.querySelectorAll('.mode-indicator');
+            existingIndicators.forEach(indicator => {
+                indicator.style.opacity = '0';
+                indicator.style.transform = 'scale(0.9)';
+            });
+
+            // After fade-out, update indicators
+            setTimeout(() => {
+                // Clear and rebuild indicators
+                indicatorsContainer.innerHTML = '';
+
+                // Render new active mode
+                const activeIndicator = renderModeIndicator(mapId, 'active-mode', config.currentMode, false);
+                if (activeIndicator) {
+                    activeIndicator.style.opacity = '0';
+                    activeIndicator.style.transform = 'scale(0.9)';
+                    indicatorsContainer.appendChild(activeIndicator);
+                    
+                    // Animate in
+                    setTimeout(() => {
+                        activeIndicator.style.opacity = '1';
+                        activeIndicator.style.transform = 'scale(1)';
+                    }, 50);
+                }
+
+                // Render new next mode (if different and has timer)
+                if (config.hasTimer && config.nextMode !== config.currentMode) {
+                    const nextIndicator = renderModeIndicator(mapId, 'next-mode', config.nextMode, true);
+                    if (nextIndicator) {
+                        nextIndicator.style.opacity = '0';
+                        nextIndicator.style.transform = 'scale(0.9)';
+                        indicatorsContainer.appendChild(nextIndicator);
+                        
+                        // Animate in with slight delay
+                        setTimeout(() => {
+                            nextIndicator.style.opacity = '1';
+                            nextIndicator.style.transform = 'scale(1)';
+                        }, 100);
+                    }
+                }
+
+                // Apply styling
+                applyModeStyles(mapId, 'active-mode', config.currentMode);
+                if (config.hasTimer && config.nextMode !== config.currentMode) {
+                    applyModeStyles(mapId, 'next-mode', config.nextMode);
+                }
+            }, 150);
+        }
+
+        function triggerModeTransitionEvent(mapId, previousMode, newMode) {
+            const event = new CustomEvent('modeTransition', {
+                detail: {
+                    mapId: mapId,
+                    previousMode: previousMode,
+                    newMode: newMode,
+                    timestamp: Date.now(),
+                    mapName: mapConfigurations[mapId]?.displayName
+                }
+            });
+            
+            document.dispatchEvent(event);
+        }
+
+        // Enhanced transition validation
+        function validateModeTransition(mapId, fromMode, toMode) {
+            const config = mapConfigurations[mapId];
+            
+            if (!config) {
+                console.error(`Invalid map ID for transition: ${mapId}`);
+                return false;
+            }
+
+            if (!gameModes[fromMode]) {
+                console.error(`Invalid source mode: ${fromMode}`);
+                return false;
+            }
+
+            if (!gameModes[toMode]) {
+                console.error(`Invalid target mode: ${toMode}`);
+                return false;
+            }
+
+            // Check if transition is allowed (could add custom rules here)
+            return true;
+        }
+
+        // Manual mode transition (for testing or admin purposes)
+        function forceTransition(mapId, targetMode) {
+            const config = mapConfigurations[mapId];
+            
+            if (!config) {
+                console.error(`Cannot force transition: invalid map ${mapId}`);
+                return false;
+            }
+
+            if (!gameModes[targetMode]) {
+                console.error(`Cannot force transition: invalid mode ${targetMode}`);
+                return false;
+            }
+
+            if (!validateModeTransition(mapId, config.currentMode, targetMode)) {
+                console.error(`Transition validation failed for ${mapId}: ${config.currentMode} -> ${targetMode}`);
+                return false;
+            }
+
+            const previousMode = config.currentMode;
+            config.nextMode = targetMode;
+            
+            // Reset timer to trigger immediate transition
+            config.timeRemaining = 0;
+            
+            console.log(`Forced transition initiated for ${mapId}: ${previousMode} -> ${targetMode}`);
+            return true;
+        }
+
+        // Debug function to test mode transitions
+        function testModeTransitions() {
+            console.log('Testing mode transitions...');
+            
+            const mapIds = Object.keys(mapConfigurations);
+            const randomMapId = mapIds[Math.floor(Math.random() * mapIds.length)];
+            const config = mapConfigurations[randomMapId];
+            
+            if (config && config.hasTimer) {
+                console.log(`Testing transition for ${randomMapId}`);
+                config.timeRemaining = 3; // 3 seconds until transition
+                updateTimerDisplay(randomMapId);
+            }
+        }
+
+        // Accessibility functions
+        function announceToScreenReader(message) {
+            const announcements = document.getElementById('announcements');
+            if (announcements) {
+                announcements.textContent = message;
+                
+                // Clear after a delay to allow for re-announcements
+                setTimeout(() => {
+                    announcements.textContent = '';
+                }, 1000);
+            }
+        }
+
+        function updateAccessibilityLabels() {
+            Object.keys(mapConfigurations).forEach(mapId => {
+                const config = mapConfigurations[mapId];
+                const mapElement = document.getElementById(mapId);
+                
+                if (mapElement && config) {
+                    const currentMode = gameModes[config.currentMode];
+                    const nextMode = config.hasTimer ? gameModes[config.nextMode] : null;
+                    
+                    let ariaLabel = `${config.displayName}: Current mode is ${currentMode.displayName}`;
+                    
+                    if (nextMode && config.timeRemaining !== null) {
+                        const timeString = formatTime(config.timeRemaining);
+                        ariaLabel += `. Next mode is ${nextMode.displayName} in ${timeString}`;
+                    }
+                    
+                    mapElement.setAttribute('aria-label', ariaLabel);
+                }
+            });
+        }
+
+        function checkAccessibilityCompliance() {
+            const issues = [];
+            
+            // Check for missing alt text on icons
+            document.querySelectorAll('.mode-icon').forEach(icon => {
+                if (!icon.getAttribute('aria-label') && !icon.getAttribute('title')) {
+                    issues.push('Mode icon missing accessibility label');
+                }
+            });
+            
+            // Check color contrast (basic check)
+            const activeElements = document.querySelectorAll('.active-mode');
+            activeElements.forEach(element => {
+                const styles = window.getComputedStyle(element);
+                const bgColor = styles.backgroundColor;
+                const textColor = styles.color;
+                
+                // Basic contrast check (simplified)
+                if (bgColor === textColor) {
+                    issues.push('Potential color contrast issue detected');
+                }
+            });
+            
+            if (issues.length > 0) {
+                console.warn('Accessibility issues detected:', issues);
+            } else {
+                console.log('Basic accessibility checks passed');
+            }
+            
+            return issues;
+        }
+
+        // Enhanced mode transition with accessibility
+        function triggerModeTransitionEvent(mapId, previousMode, newMode) {
+            const event = new CustomEvent('modeTransition', {
+                detail: {
+                    mapId: mapId,
+                    previousMode: previousMode,
+                    newMode: newMode,
+                    timestamp: Date.now(),
+                    mapName: mapConfigurations[mapId]?.displayName
+                }
+            });
+            
+            document.dispatchEvent(event);
+            
+            // Announce transition to screen readers
+            const mapName = mapConfigurations[mapId]?.displayName;
+            const newModeName = gameModes[newMode]?.displayName;
+            announceToScreenReader(`${mapName} mode changed to ${newModeName}`);
+            
+            // Update accessibility labels
+            updateAccessibilityLabels();
+        }
+
+        function startTimerEngine() {
+            if (mapState.updateInterval) {
+                clearInterval(mapState.updateInterval);
+            }
+
+            mapState.updateInterval = setInterval(() => {
+                try {
+                    let anyTimerExpired = false;
+                    let visualUpdatesNeeded = false;
+                    
+                    Object.keys(mapConfigurations).forEach(mapId => {
+                        const config = mapConfigurations[mapId];
+                        if (config.hasTimer && config.timeRemaining !== null) {
+                            const expired = updateTimer(mapId);
+                            if (expired) {
+                                anyTimerExpired = true;
+                                visualUpdatesNeeded = true;
+                            }
+                            
+                            // Check if visual updates are needed for warning states
+                            const timerElement = document.getElementById(`${mapId}-timer`);
+                            if (timerElement) {
+                                const wasWarning = timerElement.classList.contains('timer-warning');
+                                const wasCritical = timerElement.classList.contains('timer-critical');
+                                const isWarning = config.timeRemaining <= 60;
+                                const isCritical = config.timeRemaining <= 10;
+                                
+                                if (wasWarning !== isWarning || wasCritical !== isCritical) {
+                                    visualUpdatesNeeded = true;
+                                }
+                            }
+                        }
+                    });
+                    
+                    // Perform batch visual updates if needed
+                    if (visualUpdatesNeeded) {
+                        updateAllVisualElements();
+                    }
+                    
+                    mapState.lastGlobalUpdate = Date.now();
+                    
+                    // Reset error count on successful update
+                    if (mapState.errorCount > 0) {
+                        mapState.errorCount = 0;
+                    }
+                    
+                } catch (error) {
+                    console.error('Timer update error:', error);
+                    mapState.errorCount++;
+                    
+                    if (mapState.errorCount >= mapState.maxErrors) {
+                        console.error('Too many timer errors, stopping timer engine');
+                        stopTimerEngine();
+                        showError('Timer system encountered errors and was stopped');
+                    }
+                }
+            }, 1000); // Update every second
+
+            console.log('Timer engine started');
+        }
+
+        // Enhanced visual update functions
+        function updateAllVisualElements() {
+            Object.keys(mapConfigurations).forEach(mapId => {
+                updateVisualElementsForMap(mapId);
+            });
+            
+            // Update global accessibility labels
+            updateAccessibilityLabels();
+        }
+
+        function updateVisualElementsForMap(mapId) {
+            const config = mapConfigurations[mapId];
+            if (!config) return;
+
+            // Update timer display with visual feedback
+            updateTimerDisplay(mapId);
+            
+            // Update mode indicator styling based on timer state
+            updateModeIndicatorVisuals(mapId);
+            
+            // Update map location visual state
+            updateMapLocationVisuals(mapId);
+        }
+
+        function updateModeIndicatorVisuals(mapId) {
+            const config = mapConfigurations[mapId];
+            const activeIndicator = document.getElementById(`${mapId}-activemode`);
+            const nextIndicator = document.getElementById(`${mapId}-nextmode`);
+            
+            if (activeIndicator) {
+                // Add pulsing effect for very low timers
+                if (config.hasTimer && config.timeRemaining <= 10) {
+                    activeIndicator.classList.add('mode-urgent');
+                } else {
+                    activeIndicator.classList.remove('mode-urgent');
+                }
+            }
+            
+            if (nextIndicator && config.hasTimer) {
+                // Increase visibility as timer gets closer to zero
+                const opacity = config.timeRemaining <= 60 ? 
+                    Math.max(0.7, 1 - (config.timeRemaining / 60) * 0.3) : 0.7;
+                nextIndicator.style.opacity = opacity;
+            }
+        }
+
+        function updateMapLocationVisuals(mapId) {
+            const config = mapConfigurations[mapId];
+            const mapElement = document.getElementById(mapId);
+            
+            if (!mapElement || !config.hasTimer) return;
+
+            // Add visual urgency classes based on timer
+            mapElement.classList.remove('timer-normal', 'timer-warning', 'timer-critical');
+            
+            if (config.timeRemaining <= 10) {
+                mapElement.classList.add('timer-critical');
+            } else if (config.timeRemaining <= 60) {
+                mapElement.classList.add('timer-warning');
+            } else {
+                mapElement.classList.add('timer-normal');
+            }
+        }
+
+        // Smooth visual transitions for DOM updates
+        function smoothUpdateElement(element, updateFunction) {
+            if (!element) return;
+
+            // Add transition class
+            element.classList.add('updating');
+            
+            // Perform update after brief delay for smooth transition
+            setTimeout(() => {
+                updateFunction();
+                
+                // Remove transition class
+                setTimeout(() => {
+                    element.classList.remove('updating');
+                }, 300);
+            }, 50);
+        }
+
+        // Visual feedback for timer events
+        function addTimerEventFeedback(mapId, eventType) {
+            const mapElement = document.getElementById(mapId);
+            if (!mapElement) return;
+
+            switch (eventType) {
+                case 'warning':
+                    mapElement.classList.add('timer-warning-flash');
+                    setTimeout(() => mapElement.classList.remove('timer-warning-flash'), 1000);
+                    break;
+                    
+                case 'critical':
+                    mapElement.classList.add('timer-critical-flash');
+                    setTimeout(() => mapElement.classList.remove('timer-critical-flash'), 1000);
+                    break;
+                    
+                case 'expired':
+                    mapElement.classList.add('timer-expired-flash');
+                    setTimeout(() => mapElement.classList.remove('timer-expired-flash'), 2000);
+                    break;
+            }
+        }
+
+        function stopTimerEngine() {
+            if (mapState.updateInterval) {
+                clearInterval(mapState.updateInterval);
+                mapState.updateInterval = null;
+            }
+            mapState.timersActive = false;
+            console.log('Timer engine stopped');
+        }
+
+        function pauseTimers() {
+            mapState.timersActive = false;
+            console.log('Timers paused');
+        }
+
+        function resumeTimers() {
+            // Update last update timestamps to prevent time jumps
+            const now = Date.now();
+            Object.keys(mapConfigurations).forEach(mapId => {
+                const config = mapConfigurations[mapId];
+                if (config.hasTimer) {
+                    config.lastUpdate = now;
+                }
+            });
+            
+            mapState.timersActive = true;
+            console.log('Timers resumed');
+        }
+
+        // Timer utility functions
+        function getTimerStatus(mapId) {
+            const config = mapConfigurations[mapId];
+            if (!config || !config.hasTimer) {
+                return null;
+            }
+
+            return {
+                mapId: mapId,
+                timeRemaining: config.timeRemaining,
+                formattedTime: formatTime(config.timeRemaining),
+                isActive: mapState.timersActive,
+                lastUpdate: config.lastUpdate,
+                cycleDuration: config.cycleDuration
+            };
+        }
+
+        function getAllTimerStatuses() {
+            const statuses = {};
+            Object.keys(mapConfigurations).forEach(mapId => {
+                const status = getTimerStatus(mapId);
+                if (status) {
+                    statuses[mapId] = status;
+                }
+            });
+            return statuses;
+        }
+
+        // Initialize positioning system
+        function initializeMapPositions() {
+            Object.keys(mapConfigurations).forEach(mapId => {
+                const mapElement = document.getElementById(mapId);
+                const config = mapConfigurations[mapId];
+                
+                if (mapElement && config) {
+                    // Apply positioning from configuration
+                    mapElement.style.left = config.position.x + '%';
+                    mapElement.style.top = config.position.y + '%';
+                    
+                    // Validate positioning is within bounds
+                    validateMapPosition(mapId, config.position);
+                }
+            });
+        }
+
+        // Validate map positions are within viewport bounds
+        function validateMapPosition(mapId, position) {
+            const isValid = position.x >= 0 && position.x <= 100 && 
+                           position.y >= 0 && position.y <= 100;
+            
+            const mapElement = document.getElementById(mapId);
+            if (mapElement) {
+                if (isValid) {
+                    mapElement.classList.remove('position-invalid');
+                    mapElement.classList.add('position-valid');
+                } else {
+                    mapElement.classList.remove('position-valid');
+                    mapElement.classList.add('position-invalid');
+                    console.warn(`Invalid position for ${mapId}: x=${position.x}%, y=${position.y}%`);
+                    showError(`Map positioning error for ${mapId}`);
+                }
+            }
+            
+            return isValid;
+        }
+
+        // Check for overlapping map positions
+        function checkMapOverlaps() {
+            const maps = Object.keys(mapConfigurations);
+            const overlaps = [];
+
+            for (let i = 0; i < maps.length; i++) {
+                for (let j = i + 1; j < maps.length; j++) {
+                    const map1 = mapConfigurations[maps[i]];
+                    const map2 = mapConfigurations[maps[j]];
+                    
+                    const distance = Math.sqrt(
+                        Math.pow(map1.position.x - map2.position.x, 2) + 
+                        Math.pow(map1.position.y - map2.position.y, 2)
+                    );
+                    
+                    // Minimum distance threshold (adjust based on element size)
+                    if (distance < 15) {
+                        overlaps.push({ map1: maps[i], map2: maps[j], distance });
+                    }
+                }
+            }
+
+            if (overlaps.length > 0) {
+                console.warn('Map position overlaps detected:', overlaps);
+            }
+
+            return overlaps;
+        }
+
+        // Toggle coordinate grid for debugging
+        function toggleCoordinateGrid() {
+            const grid = document.getElementById('coordinateGrid');
+            if (grid) {
+                grid.classList.toggle('visible');
+            }
+        }
+
+        // Get map position relative to container
+        function getRelativePosition(mapId) {
+            const mapElement = document.getElementById(mapId);
+            const container = document.getElementById('mapContainer');
+            
+            if (!mapElement || !container) return null;
+
+            const mapRect = mapElement.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            const relativeX = ((mapRect.left - containerRect.left) / containerRect.width) * 100;
+            const relativeY = ((mapRect.top - containerRect.top) / containerRect.height) * 100;
+            
+            return { x: relativeX, y: relativeY };
+        }
+
+        // Update map positions dynamically (for responsive adjustments)
+        function updateMapPositions() {
+            const container = document.getElementById('mapContainer');
+            if (!container) return;
+
+            const containerRect = container.getBoundingClientRect();
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+
+            // Adjust positions for different screen sizes
+            Object.keys(mapConfigurations).forEach(mapId => {
+                const mapElement = document.getElementById(mapId);
+                const config = mapConfigurations[mapId];
+                
+                if (mapElement && config) {
+                    let adjustedX = config.position.x;
+                    let adjustedY = config.position.y;
+
+                    // Apply responsive adjustments for smaller screens
+                    if (viewportWidth < 768) {
+                        // Mobile adjustments - move elements slightly inward
+                        if (adjustedX < 20) adjustedX = Math.max(adjustedX, 10);
+                        if (adjustedX > 80) adjustedX = Math.min(adjustedX, 90);
+                        if (adjustedY < 20) adjustedY = Math.max(adjustedY, 15);
+                        if (adjustedY > 80) adjustedY = Math.min(adjustedY, 85);
+                    } else if (viewportWidth < 1200) {
+                        // Tablet adjustments - minor positioning tweaks
+                        if (adjustedX < 15) adjustedX = Math.max(adjustedX, 8);
+                        if (adjustedX > 85) adjustedX = Math.min(adjustedX, 92);
+                    }
+
+                    mapElement.style.left = adjustedX + '%';
+                    mapElement.style.top = adjustedY + '%';
+                }
+            });
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                }, 5000);
+            }
+            
+            // Also log to console for debugging
+            console.error('Application Error:', message);
+            
+            // Announce error to screen readers
+            announceToScreenReader(`Error: ${message}`);
+        }
+
+        // Enhanced error handling and recovery
+        const errorHandler = {
+            errorCount: 0,
+            maxErrors: 10,
+            errorLog: [],
+            
+            logError: function(error, context = '') {
+                const errorEntry = {
+                    timestamp: Date.now(),
+                    message: error.message || error,
+                    stack: error.stack,
+                    context: context,
+                    url: window.location.href,
+                    userAgent: navigator.userAgent
+                };
+                
+                this.errorLog.push(errorEntry);
+                this.errorCount++;
+                
+                console.error(`Error #${this.errorCount} in ${context}:`, error);
+                
+                // Keep only last 50 errors
+                if (this.errorLog.length > 50) {
+                    this.errorLog.shift();
+                }
+                
+                return errorEntry;
+            },
+            
+            handleCriticalError: function(error, context) {
+                this.logError(error, context);
+                
+                if (this.errorCount >= this.maxErrors) {
+                    this.enterSafeMode();
+                } else {
+                    this.attemptRecovery(context);
+                }
+            },
+            
+            attemptRecovery: function(context) {
+                console.log(`Attempting recovery for context: ${context}`);
+                
+                switch (context) {
+                    case 'timer':
+                        this.recoverTimerSystem();
+                        break;
+                    case 'rendering':
+                        this.recoverRenderingSystem();
+                        break;
+                    case 'positioning':
+                        this.recoverPositioningSystem();
+                        break;
+                    default:
+                        this.performGeneralRecovery();
+                }
+            },
+            
+            recoverTimerSystem: function() {
+                try {
+                    stopTimerEngine();
+                    
+                    // Reset timer states
+                    Object.keys(mapConfigurations).forEach(mapId => {
+                        const config = mapConfigurations[mapId];
+                        if (config.hasTimer) {
+                            config.lastUpdate = Date.now();
+                            if (config.timeRemaining < 0) {
+                                config.timeRemaining = config.cycleDuration || 1800;
+                            }
+                        }
+                    });
+                    
+                    // Restart timer engine
+                    setTimeout(() => {
+                        startTimerEngine();
+                        showError('Timer system recovered');
+                    }, 1000);
+                    
+                } catch (recoveryError) {
+                    console.error('Timer recovery failed:', recoveryError);
+                    this.enterSafeMode();
+                }
+            },
+            
+            recoverRenderingSystem: function() {
+                try {
+                    // Clear and rebuild all visual elements
+                    Object.keys(mapConfigurations).forEach(mapId => {
+                        const mapElement = document.getElementById(mapId);
+                        if (mapElement) {
+                            const indicatorsContainer = mapElement.querySelector('.mode-indicators');
+                            if (indicatorsContainer) {
+                                indicatorsContainer.innerHTML = '';
+                            }
+                        }
+                    });
+                    
+                    // Reinitialize mode indicators
+                    initializeModeIndicators();
+                    showError('Rendering system recovered');
+                    
+                } catch (recoveryError) {
+                    console.error('Rendering recovery failed:', recoveryError);
+                    this.enterSafeMode();
+                }
+            },
+            
+            recoverPositioningSystem: function() {
+                try {
+                    // Reset all positions to default
+                    initializeMapPositions();
+                    updateMapPositions();
+                    showError('Positioning system recovered');
+                    
+                } catch (recoveryError) {
+                    console.error('Positioning recovery failed:', recoveryError);
+                    this.enterSafeMode();
+                }
+            },
+            
+            performGeneralRecovery: function() {
+                try {
+                    // Perform a general system reset
+                    location.reload();
+                } catch (recoveryError) {
+                    console.error('General recovery failed:', recoveryError);
+                    this.enterSafeMode();
+                }
+            },
+            
+            enterSafeMode: function() {
+                console.error('Entering safe mode due to too many errors');
+                
+                // Stop all timers
+                stopTimerEngine();
+                
+                // Display safe mode message
+                const safeMode = document.createElement('div');
+                safeMode.id = 'safe-mode';
+                safeMode.innerHTML = `
+                    <div class="safe-mode-content">
+                        <h2>Safe Mode</h2>
+                        <p>The application encountered multiple errors and is running in safe mode.</p>
+                        <p>Some features may be limited.</p>
+                        <button onclick="location.reload()">Reload Application</button>
+                        <button onclick="errorHandler.exportErrorLog()">Export Error Log</button>
+                    </div>
+                `;
+                safeMode.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                    text-align: center;
+                `;
+                
+                document.body.appendChild(safeMode);
+                
+                // Announce safe mode to screen readers
+                announceToScreenReader('Application is now in safe mode due to errors');
+            },
+            
+            exportErrorLog: function() {
+                const logData = {
+                    timestamp: new Date().toISOString(),
+                    errorCount: this.errorCount,
+                    errors: this.errorLog,
+                    systemInfo: {
+                        userAgent: navigator.userAgent,
+                        url: window.location.href,
+                        viewport: {
+                            width: window.innerWidth,
+                            height: window.innerHeight
+                        }
+                    }
+                };
+                
+                const blob = new Blob([JSON.stringify(logData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `game-map-display-errors-${Date.now()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        };
+
+        // Fallback systems
+        const fallbackSystems = {
+            // Fallback for missing background image
+            handleMissingBackground: function() {
+                const container = document.getElementById('mapContainer');
+                if (container) {
+                    container.style.backgroundImage = 'none';
+                    container.style.background = 'linear-gradient(135deg, #2c1810 0%, #4a3728 50%, #2c1810 100%)';
+                    showError('Background image failed to load, using fallback');
+                }
+            },
+            
+            // Fallback for missing mode icons
+            handleMissingIcons: function() {
+                document.querySelectorAll('.mode-icon').forEach(icon => {
+                    if (!icon.textContent || icon.textContent === '�') {
+                        const modeType = icon.closest('.mode-indicator').id.split('-').pop();
+                        icon.textContent = this.getFallbackIcon(modeType);
+                    }
+                });
+            },
+            
+            getFallbackIcon: function(modeType) {
+                const fallbackIcons = {
+                    'normal': '●',
+                    'nightraid': '◐',
+                    'coldsnap': '❅',
+                    'electromagneticstorm': '⚡',
+                    'hiddenbunker': '■'
+                };
+                
+                return fallbackIcons[modeType] || '●';
+            },
+            
+            // Fallback for JavaScript disabled
+            handleNoJavaScript: function() {
+                const noscript = document.createElement('noscript');
+                noscript.innerHTML = `
+                    <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                                background: #1a1a1a; color: white; display: flex; 
+                                align-items: center; justify-content: center; z-index: 10000;">
+                        <div style="text-align: center; padding: 20px;">
+                            <h1>JavaScript Required</h1>
+                            <p>This application requires JavaScript to function properly.</p>
+                            <p>Please enable JavaScript in your browser and reload the page.</p>
+                        </div>
+                    </div>
+                `;
+                document.head.appendChild(noscript);
+            },
+            
+            // Fallback for unsupported browsers
+            checkBrowserSupport: function() {
+                const requiredFeatures = [
+                    'addEventListener',
+                    'querySelector',
+                    'classList',
+                    'JSON',
+                    'Date.now'
+                ];
+                
+                const unsupported = requiredFeatures.filter(feature => {
+                    try {
+                        return !eval(feature);
+                    } catch (e) {
+                        return true;
+                    }
+                });
+                
+                if (unsupported.length > 0) {
+                    this.showBrowserUnsupportedMessage(unsupported);
+                    return false;
+                }
+                
+                return true;
+            },
+            
+            showBrowserUnsupportedMessage: function(unsupportedFeatures) {
+                document.body.innerHTML = `
+                    <div style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                                background: #1a1a1a; color: white; display: flex; 
+                                align-items: center; justify-content: center; z-index: 10000;">
+                        <div style="text-align: center; padding: 20px; max-width: 600px;">
+                            <h1>Browser Not Supported</h1>
+                            <p>Your browser does not support the features required for this application.</p>
+                            <p>Missing features: ${unsupportedFeatures.join(', ')}</p>
+                            <p>Please update your browser or use a modern browser like Chrome, Firefox, Safari, or Edge.</p>
+                        </div>
+                    </div>
+                `;
+            }
+        };
+
+        // Hide loading indicator once page is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            const loading = document.getElementById('loading');
+            if (loading) {
+                loading.style.display = 'none';
+            }
+
+            // Initialize and validate data models
+            const validation = initializeDataModels();
+            
+            if (validation.validMaps === 0 || validation.validModes === 0) {
+                showError('Critical error: Invalid data models detected');
+                return;
+            }
+
+            // Initialize positioning system
+            initializeMapPositions();
+            
+            // Initialize mode indicators
+            if (!initializeModeIndicators()) {
+                showError('Failed to initialize mode indicators');
+                return;
+            }
+
+            // Initialize and start timer engine
+            if (!initializeTimers()) {
+                showError('Failed to initialize timers');
+                return;
+            }
+            
+            startTimerEngine();
+            
+            // Initialize accessibility features
+            updateAccessibilityLabels();
+            checkAccessibilityCompliance();
+            
+            // Check for positioning issues
+            checkMapOverlaps();
+            
+            // Update positions on window resize
+            let resizeTimeout;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(updateMapPositions, 250);
+            });
+
+            // Debug mode: Press 'G' to toggle coordinate grid
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'g' || e.key === 'G') {
+                    toggleCoordinateGrid();
+                }
+                
+                // Debug: Press 'T' to test transitions
+                if (e.key === 't' || e.key === 'T') {
+                    testModeTransitions();
+                }
+            });
+
+            // Listen for mode transition events
+            document.addEventListener('modeTransition', function(e) {
+                console.log('Mode transition event:', e.detail);
+            });
+
+            // Handle page visibility changes to pause/resume timers
+            document.addEventListener('visibilitychange', function() {
+                if (document.hidden) {
+                    pauseTimers();
+                } else {
+                    resumeTimers();
+                }
+            });
+
+            // Handle window focus/blur for timer management
+            window.addEventListener('blur', function() {
+                pauseTimers();
+            });
+
+            window.addEventListener('focus', function() {
+                resumeTimers();
+            });
+
+            // Log initialization information
+            console.log('Game Map Display initialized successfully');
+            console.log('Map configurations:', mapConfigurations);
+            console.log('Game modes:', gameModes);
+            console.log('Debug controls:');
+            console.log('  Press "G" to toggle coordinate grid');
+            console.log('  Press "T" to test mode transitions');
+            console.log('Available functions:');
+            console.log('  forceTransition(mapId, mode) - Force a mode transition');
+            console.log('  getAllTimerStatuses() - Get all timer information');
+            console.log('  getTimerStatus(mapId) - Get specific timer info');
+        });
+        
+        // Basic error handling
+        window.addEventListener('error', function(e) {
+            showError('An error occurred loading the map display');
+        });
+    </script>
+</body>
+</html>
